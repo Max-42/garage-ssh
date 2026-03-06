@@ -1,0 +1,39 @@
+configuration:
+  ssh_port:
+    name: SSH Port
+    description: Port auf dem der SSH-Server lauscht
+  webhook_url:
+    name: Webhook URL
+    description: URL die aufgerufen wird wenn das Garagentor geöffnet werden soll
+  home_latitude:
+    name: Breitengrad (Zuhause)
+    description: Breitengrad des Garagenstandorts für Geofencing
+  home_longitude:
+    name: Längengrad (Zuhause)
+    description: Längengrad des Garagenstandorts für Geofencing
+  geofence_radius_km:
+    name: Geofence Radius (km)
+    description: Maximale Entfernung in Kilometern von Zuhause für direkte Öffnung
+  geofence_override_timeout_sec:
+    name: Geofence Override Timeout (Sek.)
+    description: Sekunden für einen zweiten Versuch wenn außerhalb des Geofence
+  tofu_timeout_sec:
+    name: TOFU Timeout (Sek.)
+    description: Dauer in Sekunden in der alle neuen Keys vertraut werden (Trust On First Use)
+  untrusted_key_retention_days:
+    name: Aufbewahrung nicht vertrauenswürdiger Keys (Tage)
+    description: Anzahl der Tage, die nicht vertrauenswürdige Keys aufbewahrt werden
+  expected_json_version:
+    name: Erwartete JSON-Version
+    description: Erwarteter Versionsstring in der Client JSON-Nachricht
+  log_level:
+    name: Log-Level
+    description: Detailgrad der Protokollierung
+  host_key_pem:
+    name: Host Key (PEM)
+    description: >-
+      SSH Host-Key im PEM-Format. Wird automatisch generiert wenn leer.
+      Wird hier für Backup/Migration gespeichert.
+      WARNUNG: Diesen Wert geheim halten!
+network:
+  "2242/tcp": SSH-Server für Garagen-Key-Authentifizierung

@@ -1,0 +1,150 @@
+name: Build and Publish
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Nightly rebuild at 03:00 UTC to update dependencies
+    - cron: '0 3 * * *'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  lint:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            garage_ssh_gate/src/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        working-directory: garage_ssh_gate/src
+        run: cargo fmt -- --check
+
+      - name: Clippy
+        working-directory: garage_ssh_gate/src
+        run: cargo clippy -- -D warnings
+
+      - name: Run tests
+        working-directory: garage_ssh_gate/src
+        run: cargo test
+
+  build:
+    name: Build Docker Image
+    needs: lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        arch: [amd64, aarch64, armv7, i386]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep '^version:' garage_ssh_gate/config.yaml | awk '{print $2}' | tr -d '"')
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+
+      - name: Determine base image
+        id: base
+        run: |
+          case "${{ matrix.arch }}" in
+            amd64)   echo "platform=linux/amd64" >> $GITHUB_OUTPUT; echo "base=ghcr.io/home-assistant/amd64-base:latest" >> $GITHUB_OUTPUT ;;
+            aarch64) echo "platform=linux/arm64" >> $GITHUB_OUTPUT; echo "base=ghcr.io/home-assistant/aarch64-base:latest" >> $GITHUB_OUTPUT ;;
+            armv7)   echo "platform=linux/arm/v7" >> $GITHUB_OUTPUT; echo "base=ghcr.io/home-assistant/armv7-base:latest" >> $GITHUB_OUTPUT ;;
+            i386)    echo "platform=linux/386" >> $GITHUB_OUTPUT; echo "base=ghcr.io/home-assistant/i386-base:latest" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: garage_ssh_gate
+          file: garage_ssh_gate/Dockerfile
+          platforms: ${{ steps.base.outputs.platform }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.arch }}-garage-ssh-gate:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.arch }}-garage-ssh-gate:latest
+          build-args: |
+            BUILD_FROM=${{ steps.base.outputs.base }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            io.hass.version=${{ steps.version.outputs.version }}
+            io.hass.type=addon
+            io.hass.arch=${{ matrix.arch }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+  update-config:
+    name: Update Config for Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: tag
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Update config.yaml version
+        run: |
+          sed -i "s/^version:.*/version: \"${{ steps.tag.outputs.version }}\"/" garage_ssh_gate/config.yaml
+
+      - name: Update image reference
+        run: |
+          # Add/update image field in config.yaml for HA updater
+          if grep -q "^image:" garage_ssh_gate/config.yaml; then
+            sed -i "s|^image:.*|image: ghcr.io/${{ github.repository }}/{arch}-garage-ssh-gate|" garage_ssh_gate/config.yaml
+          else
+            echo "image: ghcr.io/${{ github.repository }}/{arch}-garage-ssh-gate" >> garage_ssh_gate/config.yaml
+          fi
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add garage_ssh_gate/config.yaml
+          git commit -m "chore: update version to ${{ steps.tag.outputs.version }}" || true
+          git push origin HEAD:main

@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garage SSH Gate</title>
+    <style>
+        :root {
+            --primary: #03a9f4;
+            --primary-dark: #0288d1;
+            --success: #4caf50;
+            --danger: #f44336;
+            --warning: #ff9800;
+            --bg: #1c1c1c;
+            --card-bg: #2c2c2c;
+            --text: #e0e0e0;
+            --text-secondary: #9e9e9e;
+            --border: #444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 16px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        h1 .icon { font-size: 1.8rem; }
+        h2 {
+            font-size: 1.1rem;
+            margin-bottom: 12px;
+            color: var(--primary);
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--primary);
+        }
+        .stat-card .label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .tofu-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .tofu-timer {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--warning);
+            min-width: 60px;
+        }
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.85; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-warning { background: var(--warning); color: white; }
+        .btn-small { padding: 4px 10px; font-size: 0.8rem; }
+        .key-list { list-style: none; }
+        .key-item {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .key-info { flex: 1; min-width: 200px; }
+        .key-info .fingerprint {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            word-break: break-all;
+        }
+        .key-info .username {
+            font-weight: bold;
+            font-size: 1rem;
+        }
+        .key-info .meta {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        .key-actions {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .log-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+        .log-table th, .log-table td {
+            padding: 6px 8px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        .log-table th {
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+        .result-success { color: var(--success); }
+        .result-fail { color: var(--danger); }
+        .result-warning { color: var(--warning); }
+        .result-info { color: var(--primary); }
+        .trust-form {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .trust-form input {
+            padding: 6px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 0.85rem;
+        }
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+        }
+        .tab {
+            padding: 8px 16px;
+            border: 1px solid var(--border);
+            border-radius: 8px 8px 0 0;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+        .tab.active {
+            background: var(--card-bg);
+            color: var(--primary);
+            border-bottom-color: var(--card-bg);
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+        .badge-trusted { background: var(--success); color: white; }
+        .badge-untrusted { background: var(--warning); color: black; }
+        .badge-tofu { background: var(--primary); color: white; }
+        .empty-state {
+            text-align: center;
+            padding: 32px;
+            color: var(--text-secondary);
+        }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+        .toast-success { background: var(--success); }
+        .toast-error { background: var(--danger); }
+        @keyframes slideIn {
+            from { transform: translateX(100px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @media (max-width: 600px) {
+            .key-item { flex-direction: column; }
+            .stats { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <h1><span class="icon">🏠</span> Garage SSH Gate</h1>
+    <p style="color: var(--text-secondary); margin-bottom: 16px;">SSH-Key basierte Garagentor-Steuerung</p>
+
+    <div class="stats" id="stats">
+        <div class="stat-card">
+            <div class="value" id="stat-trusted">-</div>
+            <div class="label">Trusted Keys</div>
+        </div>
+        <div class="stat-card">
+            <div class="value" id="stat-untrusted">-</div>
+            <div class="label">Pending Keys</div>
+        </div>
+        <div class="stat-card">
+            <div class="value" id="stat-logs">-</div>
+            <div class="label">Log Entries</div>
+        </div>
+        <div class="stat-card">
+            <div class="value" id="stat-tofu">-</div>
+            <div class="label">TOFU Status</div>
+        </div>
+    </div>
+
+    <!-- TOFU Section -->
+    <div class="card">
+        <h2>🔑 Trust On First Use (TOFU)</h2>
+        <div class="tofu-section">
+            <div id="tofu-status-text">Prüfe Status...</div>
+            <div class="tofu-timer" id="tofu-timer" style="display:none;">45s</div>
+            <button class="btn-warning" id="btn-tofu-activate" onclick="activateTofu()">
+                TOFU aktivieren
+            </button>
+            <button class="btn-danger btn-small" id="btn-tofu-deactivate" onclick="deactivateTofu()" style="display:none;">
+                Deaktivieren
+            </button>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('untrusted')">
+            ⏳ Ausstehende Keys <span class="badge badge-untrusted" id="tab-untrusted-count">0</span>
+        </button>
+        <button class="tab" onclick="switchTab('trusted')">
+            ✅ Vertrauenswürdige Keys <span class="badge badge-trusted" id="tab-trusted-count">0</span>
+        </button>
+        <button class="tab" onclick="switchTab('logs')">
+            📋 Logs
+        </button>
+    </div>
+
+    <!-- Untrusted Keys -->
+    <div class="tab-content active" id="tab-untrusted">
+        <div class="card">
+            <ul class="key-list" id="untrusted-keys-list">
+                <li class="empty-state">Lade...</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Trusted Keys -->
+    <div class="tab-content" id="tab-trusted">
+        <div class="card">
+            <ul class="key-list" id="trusted-keys-list">
+                <li class="empty-state">Lade...</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="tab-content" id="tab-logs">
+        <div class="card">
+            <table class="log-table">
+                <thead>
+                    <tr>
+                        <th>Zeit</th>
+                        <th>Benutzer</th>
+                        <th>Ergebnis</th>
+                        <th>IP</th>
+                        <th>Fingerprint</th>
+                    </tr>
+                </thead>
+                <tbody id="log-table-body">
+                    <tr><td colspan="5" class="empty-state">Lade...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Escape HTML to prevent XSS when rendering user-provided data
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function formatDate(isoStr) {
+            if (!isoStr) return '-';
+            const d = new Date(isoStr);
+            return d.toLocaleString('de-DE');
+        }
+
+        function resultClass(result) {
+            if (result.startsWith('SUCCESS') || result.startsWith('TOFU_TRUSTED') || result.startsWith('GEOFENCE_OVERRIDE_SUCCESS')) return 'result-success';
+            if (result.startsWith('UNTRUSTED') || result.startsWith('OUTSIDE_GEOFENCE')) return 'result-warning';
+            if (result.startsWith('FAIL') || result.startsWith('INVALID') || result.startsWith('ERROR') || result.startsWith('VERSION_MISMATCH')) return 'result-fail';
+            return 'result-info';
+        }
+
+        let tofuInterval = null;
+
+        async function fetchApi(path, method = 'GET', body = null) {
+            const opts = { method, headers: { 'Content-Type': 'application/json' } };
+            if (body) opts.body = JSON.stringify(body);
+            const res = await fetch(path, opts);
+            return res.json();
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function switchTab(name) {
+            document.querySelectorAll('.tab').forEach((t, i) => {
+                t.classList.toggle('active', ['untrusted', 'trusted', 'logs'][i] === name);
+            });
+            document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+            document.getElementById(`tab-${name}`).classList.add('active');
+        }
+
+        async function loadState() {
+            try {
+                const state = await fetchApi('/api/state');
+                document.getElementById('stat-trusted').textContent = state.trusted_keys_count;
+                document.getElementById('stat-untrusted').textContent = state.untrusted_keys_count;
+                document.getElementById('stat-logs').textContent = state.log_entries_count;
+                document.getElementById('stat-tofu').textContent = state.tofu_active ? '🟢 AN' : '⚪ AUS';
+                document.getElementById('stat-tofu').style.color = state.tofu_active ? 'var(--warning)' : 'var(--text-secondary)';
+            } catch (e) {
+                console.error('Failed to load state:', e);
+            }
+        }
+
+        async function loadTofuStatus() {
+            try {
+                const status = await fetchApi('/api/tofu/status');
+                const statusText = document.getElementById('tofu-status-text');
+                const timer = document.getElementById('tofu-timer');
+                const btnActivate = document.getElementById('btn-tofu-activate');
+                const btnDeactivate = document.getElementById('btn-tofu-deactivate');
+
+                if (status.active) {
+                    statusText.textContent = 'TOFU Modus aktiv - Neue Keys werden automatisch vertraut!';
+                    statusText.style.color = 'var(--warning)';
+                    timer.style.display = 'inline';
+                    timer.textContent = `${status.remaining_seconds}s`;
+                    btnActivate.style.display = 'none';
+                    btnDeactivate.style.display = 'inline';
+
+                    if (!tofuInterval) {
+                        tofuInterval = setInterval(loadTofuStatus, 1000);
+                    }
+                } else {
+                    statusText.textContent = 'TOFU Modus inaktiv';
+                    statusText.style.color = 'var(--text-secondary)';
+                    timer.style.display = 'none';
+                    btnActivate.style.display = 'inline';
+                    btnDeactivate.style.display = 'none';
+
+                    if (tofuInterval) {
+                        clearInterval(tofuInterval);
+                        tofuInterval = null;
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load TOFU status:', e);
+            }
+        }
+
+        async function activateTofu() {
+            const res = await fetchApi('/api/tofu/activate', 'POST');
+            showToast(res.message, res.success ? 'success' : 'error');
+            loadTofuStatus();
+            loadState();
+        }
+
+        async function deactivateTofu() {
+            const res = await fetchApi('/api/tofu/deactivate', 'POST');
+            showToast(res.message, res.success ? 'success' : 'error');
+            loadTofuStatus();
+            loadState();
+        }
+
+        async function loadUntrustedKeys() {
+            try {
+                const keys = await fetchApi('/api/untrusted-keys');
+                const list = document.getElementById('untrusted-keys-list');
+                document.getElementById('tab-untrusted-count').textContent = keys.length;
+
+                if (keys.length === 0) {
+                    list.innerHTML = '<li class="empty-state">Keine ausstehenden Keys</li>';
+                    return;
+                }
+
+                list.innerHTML = keys.map(k => `
+                    <li class="key-item">
+                        <div class="key-info">
+                            <div class="username">👤 ${escapeHtml(k.ssh_username)}</div>
+                            <div class="meta">
+                                ${k.device_info ? `📱 ${escapeHtml(k.device_info.device_name || '')} (${escapeHtml(k.device_info.device_model || '')}, ${escapeHtml(k.device_info.device_os || '')})` : '📱 Keine Gerätedaten'}
+                            </div>
+                            <div class="fingerprint">🔑 ${escapeHtml(k.fingerprint)}</div>
+                            <div class="meta">
+                                Typ: ${escapeHtml(k.key_type)} |
+                                Erstmals: ${formatDate(k.first_seen)} |
+                                Zuletzt: ${formatDate(k.last_seen)} |
+                                Versuche: ${k.attempt_count}
+                            </div>
+                        </div>
+                        <div class="key-actions">
+                            <div class="trust-form" id="trust-form-${escapeHtml(k.fingerprint)}">
+                                <input type="text" placeholder="Benutzername" id="trust-user-${escapeHtml(k.fingerprint)}" value="${escapeHtml(k.ssh_username)}">
+                                <input type="text" placeholder="Gerätename" id="trust-device-${escapeHtml(k.fingerprint)}" value="${k.device_info ? escapeHtml(k.device_info.device_name || '') : ''}">
+                                <button class="btn-success btn-small" onclick="trustKey('${escapeHtml(k.fingerprint)}')">✅ Vertrauen</button>
+                                <button class="btn-danger btn-small" onclick="deleteUntrustedKey('${escapeHtml(k.fingerprint)}')">🗑️</button>
+                            </div>
+                        </div>
+                    </li>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load untrusted keys:', e);
+            }
+        }
+
+        async function loadTrustedKeys() {
+            try {
+                const keys = await fetchApi('/api/trusted-keys');
+                const list = document.getElementById('trusted-keys-list');
+                document.getElementById('tab-trusted-count').textContent = keys.length;
+
+                if (keys.length === 0) {
+                    list.innerHTML = '<li class="empty-state">Keine vertrauenswürdigen Keys</li>';
+                    return;
+                }
+
+                list.innerHTML = keys.map(k => `
+                    <li class="key-item">
+                        <div class="key-info">
+                            <div class="username">👤 ${escapeHtml(k.username)} <span class="badge badge-trusted">Vertraut</span></div>
+                            <div class="meta">📱 ${escapeHtml(k.device_name)}</div>
+                            <div class="fingerprint">🔑 ${escapeHtml(k.fingerprint)}</div>
+                            <div class="meta">
+                                Typ: ${escapeHtml(k.key_type)} |
+                                Vertraut seit: ${formatDate(k.trusted_at)} |
+                                Zuletzt benutzt: ${formatDate(k.last_used)} |
+                                Nutzungen: ${k.use_count}
+                            </div>
+                        </div>
+                        <div class="key-actions">
+                            <button class="btn-danger btn-small" onclick="revokeKey('${escapeHtml(k.fingerprint)}')">🚫 Widerrufen</button>
+                        </div>
+                    </li>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load trusted keys:', e);
+            }
+        }
+
+        async function loadLogs() {
+            try {
+                const logs = await fetchApi('/api/logs');
+                const body = document.getElementById('log-table-body');
+
+                if (logs.length === 0) {
+                    body.innerHTML = '<tr><td colspan="5" class="empty-state">Keine Logs vorhanden</td></tr>';
+                    return;
+                }
+
+                body.innerHTML = logs.map(l => `
+                    <tr>
+                        <td>${formatDate(l.timestamp)}</td>
+                        <td>${escapeHtml(l.ssh_username)}</td>
+                        <td class="${resultClass(l.result)}">${escapeHtml(l.result)}</td>
+                        <td>${escapeHtml(l.client_ip)}</td>
+                        <td class="fingerprint">${escapeHtml(l.fingerprint).substring(0, 20)}…</td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load logs:', e);
+            }
+        }
+
+        async function trustKey(fingerprint) {
+            const username = document.getElementById(`trust-user-${fingerprint}`).value;
+            const deviceName = document.getElementById(`trust-device-${fingerprint}`).value;
+
+            if (!username) {
+                showToast('Bitte Benutzername eingeben', 'error');
+                return;
+            }
+
+            const res = await fetchApi('/api/trust-key', 'POST', {
+                fingerprint,
+                username,
+                device_name: deviceName || 'Unknown'
+            });
+
+            showToast(res.message, res.success ? 'success' : 'error');
+            if (res.success) {
+                refreshAll();
+            }
+        }
+
+        async function revokeKey(fingerprint) {
+            if (!confirm('Möchten Sie diesen Key wirklich widerrufen?')) return;
+            const res = await fetchApi('/api/revoke-key', 'POST', { fingerprint });
+            showToast(res.message, res.success ? 'success' : 'error');
+            if (res.success) refreshAll();
+        }
+
+        async function deleteUntrustedKey(fingerprint) {
+            if (!confirm('Möchten Sie diesen Key wirklich löschen?')) return;
+            const res = await fetchApi('/api/delete-untrusted-key', 'POST', { fingerprint });
+            showToast(res.message, res.success ? 'success' : 'error');
+            if (res.success) refreshAll();
+        }
+
+        function refreshAll() {
+            loadState();
+            loadTofuStatus();
+            loadUntrustedKeys();
+            loadTrustedKeys();
+            loadLogs();
+        }
+
+        // Initial load
+        refreshAll();
+        // Auto-refresh every 5 seconds
+        setInterval(refreshAll, 5000);
+    </script>
+</body>
+</html>

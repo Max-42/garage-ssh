@@ -1,0 +1,9 @@
+# Garage SSH Gate
+target/
+*.swp
+*.swo
+*~
+.DS_Store
+.idea/
+.vscode/
+Cargo.lock

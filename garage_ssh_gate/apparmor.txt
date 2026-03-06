@@ -1,0 +1,86 @@
+#include <tunables/global>
+
+profile garage_ssh_gate flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Capabilities
+  file,
+  signal (send) set=(kill,term,int,hup,cont),
+
+  # S6-Overlay
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /package/** ix,
+  /command/** ix,
+  /etc/services.d/** rwix,
+  /etc/cont-init.d/** rwix,
+  /etc/cont-finish.d/** rwix,
+  /run/{,**} rwk,
+  /dev/tty rw,
+
+  # Bashio
+  /usr/lib/bashio/** ix,
+  /tmp/** rwk,
+
+  # Access to options.json and persistent data
+  /data/** rw,
+
+  # Network access (SSH server + webhook + ingress)
+  network inet stream,
+  network inet dgram,
+  network inet6 stream,
+  network inet6 dgram,
+
+  # CA certificates for webhook HTTPS
+  /etc/ssl/** r,
+  /usr/share/ca-certificates/** r,
+
+  # Deny dangerous operations
+  deny /proc/*/mem rw,
+  deny /sys/** w,
+  deny /dev/mem rw,
+  deny /dev/kmem rw,
+
+  # Start new profile for the garage-ssh-gate binary
+  /usr/bin/garage-ssh-gate cx -> garage_ssh_gate_bin,
+
+  profile garage_ssh_gate_bin flags=(attach_disconnected,mediate_deleted) {
+    #include <abstractions/base>
+
+    # Receive signals from S6-Overlay
+    signal (receive) peer=*_garage_ssh_gate,
+
+    # Access to persistent data
+    /data/** rw,
+
+    # Binary itself
+    /usr/bin/garage-ssh-gate r,
+
+    # Network access
+    network inet stream,
+    network inet dgram,
+    network inet6 stream,
+    network inet6 dgram,
+
+    # CA certificates
+    /etc/ssl/** r,
+    /usr/share/ca-certificates/** r,
+    /etc/passwd r,
+
+    # Temp files
+    /tmp/** rwk,
+
+    # Dev
+    /dev/tty rw,
+    /dev/urandom r,
+    /dev/random r,
+
+    # Deny dangerous operations
+    deny /proc/*/mem rw,
+    deny /sys/** w,
+    deny /dev/mem rw,
+    deny /dev/kmem rw,
+  }
+}
