@@ -157,10 +157,32 @@ Dies kann mit jeder Home Assistant Automation verbunden werden.
 ## Entwicklung
 
 ### Voraussetzungen
-- Rust 1.85+
-- Docker
 
-### Lokales Bauen
+**Option A – NixOS / nix (empfohlen)**  
+Das Repository enthält ein `flake.nix`, das automatisch eine vollständige
+Entwicklungsumgebung mit Rust 1.85, Clippy, Rustfmt und OpenSSL bereitstellt.
+
+```bash
+# Einmalig: Dev-Shell betreten
+nix develop
+
+# Dann innerhalb der Shell:
+cargo build                  # Debug-Build
+cargo build --release        # Release-Build
+cargo clippy                 # Lint
+cargo fmt                    # Formatierung prüfen
+cargo test                   # Tests ausführen
+```
+
+Mit [direnv](https://direnv.net/) wird die Shell automatisch aktiviert:
+```bash
+direnv allow   # einmalig im Repo-Root
+```
+
+**Option B – Rust direkt**  
+- Rust 1.85+
+- `pkg-config` und `openssl-dev` (oder `libssl-dev` auf Debian/Ubuntu)
+
 ```bash
 cd garage_ssh_gate/src
 cargo build --release

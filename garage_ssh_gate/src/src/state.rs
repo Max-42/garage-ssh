@@ -214,6 +214,7 @@ impl AppState {
     }
     
     /// Find an untrusted key by fingerprint
+    #[allow(dead_code)]
     pub fn find_untrusted_key(&self, fingerprint: &str) -> Option<&UntrustedKey> {
         self.untrusted_keys.iter().find(|k| k.fingerprint == fingerprint)
     }

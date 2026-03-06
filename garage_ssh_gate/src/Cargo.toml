@@ -36,10 +36,7 @@ chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
 # Crypto
-ssh-key = { version = "0.6", features = ["ed25519", "rsa", "p256", "p384", "alloc"] }
-sha2 = "0.10"
-hex = "0.4"
-rand = "0.9"
+ssh-key = { version = "0.6", features = ["ed25519", "rsa", "p256", "p384", "alloc", "rand_core"] }
 
 # HTML sanitization
 ammonia = "4"

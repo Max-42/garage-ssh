@@ -34,6 +34,7 @@ impl AppConfig {
     }
     
     /// Reload configuration (for live updates from HA UI)
+    #[allow(dead_code)]
     pub fn reload(&mut self, path: &str) -> anyhow::Result<()> {
         let new_config = Self::load(path)?;
         *self = new_config;

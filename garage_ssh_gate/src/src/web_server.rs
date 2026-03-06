@@ -13,6 +13,7 @@ use crate::config::AppConfig;
 use crate::state::AppState;
 
 const STATE_PATH: &str = "/data/state.json";
+#[allow(dead_code)]
 const CONFIG_PATH: &str = "/data/options.json";
 
 #[derive(Clone)]
@@ -343,6 +344,6 @@ async fn get_config(State(web): State<WebState>) -> impl IntoResponse {
     }))
 }
 
-async fn index_page(State(web): State<WebState>) -> impl IntoResponse {
+async fn index_page(State(_web): State<WebState>) -> impl IntoResponse {
     Html(include_str!("../web/index.html"))
 }

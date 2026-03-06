@@ -5,8 +5,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use russh::server::{Auth, Handler, Msg, Server as RusshServer, Session};
 use russh::{Channel, ChannelId, CryptoVec, MethodSet};
-use russh_keys::key::{KeyPair, PublicKey};
-use sha2::{Sha256, Digest};
+use russh_keys::{PrivateKey, PublicKey};
+use russh_keys::ssh_key::rand_core::OsRng;
+use russh_keys::ssh_key::Algorithm;
 use tokio::sync::RwLock;
 use tracing::{info, warn, error};
 
@@ -25,7 +26,7 @@ pub fn load_or_generate_host_key(
     config: &mut crate::config::AppConfig,
     file_path: &str,
     options_path: &str,
-) -> anyhow::Result<KeyPair> {
+) -> anyhow::Result<PrivateKey> {
     // 1) Try config PEM first (migration / backup restore)
     if !config.host_key_pem.is_empty() {
         info!("Loading host key from add-on configuration (host_key_pem)");
@@ -47,8 +48,11 @@ pub fn load_or_generate_host_key(
 
     // 3) Generate new key
     info!("Generating new ED25519 host key");
-    let key = KeyPair::generate_ed25519().expect("Failed to generate ED25519 key");
-    let pem = russh_keys::encode_pkcs8_pem(&key)?;
+    let key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519)
+        .map_err(|e| anyhow::anyhow!("Failed to generate ED25519 key: {}", e))?;
+    let mut pem_buf: Vec<u8> = Vec::new();
+    russh_keys::encode_pkcs8_pem(&key, &mut pem_buf)?;
+    let pem = String::from_utf8(pem_buf)?;
     std::fs::write(file_path, pem.as_bytes())?;
     save_host_key_to_config(&pem, config, options_path)?;
     info!("Host key generated and saved to config for backup");
@@ -70,28 +74,18 @@ fn save_host_key_to_config(
 
 /// Compute SHA-256 fingerprint of a public key
 fn compute_fingerprint(key: &PublicKey) -> String {
-    let key_bytes = key.public_key_bytes();
-    let mut hasher = Sha256::new();
-    hasher.update(&key_bytes);
-    let result = hasher.finalize();
-    format!("SHA256:{}", hex::encode(result))
+    key.fingerprint(russh_keys::ssh_key::HashAlg::Sha256).to_string()
 }
 
 /// Get human-readable key type
 fn key_type_string(key: &PublicKey) -> String {
-    match key {
-        PublicKey::Ed25519(_) => "ed25519".to_string(),
-        PublicKey::RSA { .. } => "rsa".to_string(),
-        _ => "unknown".to_string(),
-    }
+    key.algorithm().as_str().to_string()
 }
 
 /// Encode public key to authorized_keys format string
 fn encode_public_key(key: &PublicKey) -> String {
-    let key_bytes = key.public_key_bytes();
-    use base64::Engine;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&key_bytes);
-    format!("{} {}", key_type_string(key), encoded)
+    // to_openssh() produces "<type> <base64>" format
+    key.to_openssh().unwrap_or_else(|_| format!("{} <encode-error>", key_type_string(key)))
 }
 
 struct GarageSSHServer {
@@ -182,7 +176,7 @@ impl Handler for GarageSSHHandler {
     async fn channel_open_session(
         &mut self,
         channel: Channel<Msg>,
-        session: &mut Session,
+        _session: &mut Session,
     ) -> Result<bool, Self::Error> {
         self.channel_id = Some(channel.id());
         info!("Channel opened for {}", self.ssh_username);
@@ -194,22 +188,21 @@ impl Handler for GarageSSHHandler {
         channel_id: ChannelId,
         data: &[u8],
         session: &mut Session,
-    ) -> Result<bool, Self::Error> {
+    ) -> Result<(), Self::Error> {
         // Some clients may send data via exec
-        let data_str = String::from_utf8_lossy(data);
         info!("Exec request from {}: {} bytes", self.ssh_username, data.len());
         self.stdin_data.extend_from_slice(data);
         
         // Process the connection
         self.process_connection(channel_id, session).await?;
-        Ok(true)
+        Ok(())
     }
     
     async fn data(
         &mut self,
-        channel_id: ChannelId,
+        _channel_id: ChannelId,
         data: &[u8],
-        session: &mut Session,
+        _session: &mut Session,
     ) -> Result<(), Self::Error> {
         // Accumulate stdin data (limit to 64KB to prevent abuse)
         if self.stdin_data.len() < 65536 {
@@ -222,12 +215,12 @@ impl Handler for GarageSSHHandler {
         &mut self,
         channel_id: ChannelId,
         session: &mut Session,
-    ) -> Result<bool, Self::Error> {
+    ) -> Result<(), Self::Error> {
         info!("Shell request from {}", self.ssh_username);
         // Wait a moment for data, then process
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         self.process_connection(channel_id, session).await?;
-        Ok(true)
+        Ok(())
     }
 
     async fn channel_eof(
@@ -312,7 +305,7 @@ impl GarageSSHHandler {
                 session,
                 &format!("FAIL: {}\n", error_msg),
             ).await;
-            session.close(channel_id);
+            let _ = session.close(channel_id);
             return Ok(());
         }
         
@@ -354,7 +347,7 @@ impl GarageSSHHandler {
                     session,
                     "FAIL: Key was already pending before TOFU mode. Please ask the admin to trust it manually.\n",
                 ).await;
-                session.close(channel_id);
+                let _ = session.close(channel_id);
                 return Ok(());
             }
             
@@ -398,7 +391,7 @@ impl GarageSSHHandler {
                 session,
                 "FAIL: Key not trusted. Please ask the administrator to trust your key.\n",
             ).await;
-            session.close(channel_id);
+            let _ = session.close(channel_id);
             return Ok(());
         }
         
@@ -461,7 +454,7 @@ impl GarageSSHHandler {
                                     config.geofence_override_timeout_sec
                                 ),
                             ).await;
-                            session.close(channel_id);
+                            let _ = session.close(channel_id);
                             return Ok(());
                         }
                     }
@@ -506,7 +499,7 @@ impl GarageSSHHandler {
             }
         }
         
-        session.close(channel_id);
+        let _ = session.close(channel_id);
         Ok(())
     }
     
@@ -610,7 +603,7 @@ impl GarageSSHHandler {
 
 /// Run the SSH server
 pub async fn run(
-    host_key: KeyPair,
+    host_key: PrivateKey,
     state: Arc<RwLock<AppState>>,
     config: Arc<RwLock<AppConfig>>,
 ) -> anyhow::Result<()> {
