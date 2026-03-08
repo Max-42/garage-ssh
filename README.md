@@ -163,21 +163,30 @@ Das Repository enthält ein `flake.nix`, das automatisch eine vollständige
 Entwicklungsumgebung mit Rust 1.85, Clippy, Rustfmt und OpenSSL bereitstellt.
 
 ```bash
-# Einmalig: Dev-Shell betreten
-nix develop
+# Vom Repo-Root aus, kein cd nötig:
+nix develop --command cargo build --manifest-path garage_ssh_gate/src/Cargo.toml
 
-# Dann innerhalb der Shell:
-cargo build                  # Debug-Build
-cargo build --release        # Release-Build
-cargo clippy                 # Lint
-cargo fmt                    # Formatierung prüfen
-cargo test                   # Tests ausführen
+# Schneller lokaler Release-Build (alle Kerne, kein LTO):
+nix develop --command cargo build --profile release-local --manifest-path garage_ssh_gate/src/Cargo.toml
+
+# Weitere nützliche Befehle:
+nix develop --command cargo clippy --manifest-path garage_ssh_gate/src/Cargo.toml
+nix develop --command cargo fmt   --manifest-path garage_ssh_gate/src/Cargo.toml
+nix develop --command cargo test  --manifest-path garage_ssh_gate/src/Cargo.toml
 ```
 
-Mit [direnv](https://direnv.net/) wird die Shell automatisch aktiviert:
+Oder Dev-Shell einmalig betreten und dann ohne Prefix arbeiten:
 ```bash
-direnv allow   # einmalig im Repo-Root
+nix develop          # Shell betreten
+direnv allow         # alternativ: automatisch via direnv
 ```
+
+> **Hinweis zur Build-Geschwindigkeit:**  
+> `cargo build --release` verwendet `codegen-units = 1` (optimal für das Docker-Image,
+> aber Single-Threaded). Für schnelle lokale Iteration:
+> ```bash
+> cargo build --profile release-local   # nutzt alle CPU-Kerne
+> ```
 
 **Option B – Rust direkt**  
 - Rust 1.85+

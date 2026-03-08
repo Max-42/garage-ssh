@@ -58,4 +58,11 @@ opt-level = "s"
 lto = true
 strip = true
 panic = "abort"
-codegen-units = 1
+codegen-units = 1   # single-unit for smallest binary (used by Docker CI)
+
+# Fast local release build: all cores, no LTO, no strip
+[profile.release-local]
+inherits = "release"
+lto = false
+strip = false
+# codegen-units intentionally omitted → Cargo defaults to nproc
