@@ -84,6 +84,10 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Version: ${VERSION}"
 
+      - name: Lowercase repository name
+        id: repo
+        run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: Determine base image
         id: base
         run: |
@@ -102,8 +106,8 @@ jobs:
           platforms: ${{ steps.base.outputs.platform }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.arch }}-garage-ssh-gate:${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.arch }}-garage-ssh-gate:latest
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/${{ matrix.arch }}-garage-ssh-gate:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/${{ matrix.arch }}-garage-ssh-gate:latest
           build-args: |
             BUILD_FROM=${{ steps.base.outputs.base }}
           cache-from: type=gha
@@ -134,11 +138,12 @@ jobs:
 
       - name: Update image reference
         run: |
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           # Add/update image field in config.yaml for HA updater
           if grep -q "^image:" garage_ssh_gate/config.yaml; then
-            sed -i "s|^image:.*|image: ghcr.io/${{ github.repository }}/{arch}-garage-ssh-gate|" garage_ssh_gate/config.yaml
+            sed -i "s|^image:.*|image: ghcr.io/${REPO}/{arch}-garage-ssh-gate|" garage_ssh_gate/config.yaml
           else
-            echo "image: ghcr.io/${{ github.repository }}/{arch}-garage-ssh-gate" >> garage_ssh_gate/config.yaml
+            echo "image: ghcr.io/${REPO}/{arch}-garage-ssh-gate" >> garage_ssh_gate/config.yaml
           fi
 
       - name: Commit changes
