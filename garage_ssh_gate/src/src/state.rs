@@ -1,11 +1,11 @@
 use chrono::{DateTime, Utc};
+use fd_lock::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
-use uuid::Uuid;
 use tracing::{info, warn};
-use fd_lock::RwLock;
+use uuid::Uuid;
 
 /// Persistent application state
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,7 +137,7 @@ impl TofuState {
             false
         }
     }
-    
+
     /// Activate TOFU mode for the configured duration
     pub fn activate(&mut self, timeout_sec: u64) {
         self.active = true;
@@ -145,7 +145,7 @@ impl TofuState {
         self.timeout_sec = timeout_sec;
         info!("TOFU mode activated for {} seconds", timeout_sec);
     }
-    
+
     /// Deactivate TOFU mode
     pub fn deactivate(&mut self) {
         self.active = false;
@@ -165,7 +165,7 @@ impl AppState {
             geofence_overrides: HashMap::new(),
         }
     }
-    
+
     /// Load state from disk or create new
     pub fn load_or_create(path: &str) -> anyhow::Result<Self> {
         if std::path::Path::new(path).exists() {
@@ -183,42 +183,50 @@ impl AppState {
             Ok(AppState::new())
         }
     }
-    
+
     /// Save state to disk with file locking to prevent lost updates
     pub fn save(&self, path: &str) -> anyhow::Result<()> {
         let json = serde_json::to_string_pretty(self)?;
         let tmp_path = format!("{}.tmp", path);
-        
+
         // Write to temp file first
         let tmp_file = fs::File::create(&tmp_path)?;
         let mut lock = RwLock::new(tmp_file);
         {
-            let mut guard = lock.write().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let mut guard = lock
+                .write()
+                .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
             guard.write_all(json.as_bytes())?;
             guard.flush()?;
         }
-        
+
         // Atomic rename
         fs::rename(&tmp_path, path)?;
         Ok(())
     }
-    
+
     /// Find a trusted key by fingerprint
     pub fn find_trusted_key(&self, fingerprint: &str) -> Option<&TrustedKey> {
-        self.trusted_keys.iter().find(|k| k.fingerprint == fingerprint)
+        self.trusted_keys
+            .iter()
+            .find(|k| k.fingerprint == fingerprint)
     }
-    
+
     /// Find a trusted key by fingerprint (mutable)
     pub fn find_trusted_key_mut(&mut self, fingerprint: &str) -> Option<&mut TrustedKey> {
-        self.trusted_keys.iter_mut().find(|k| k.fingerprint == fingerprint)
+        self.trusted_keys
+            .iter_mut()
+            .find(|k| k.fingerprint == fingerprint)
     }
-    
+
     /// Find an untrusted key by fingerprint
     #[allow(dead_code)]
     pub fn find_untrusted_key(&self, fingerprint: &str) -> Option<&UntrustedKey> {
-        self.untrusted_keys.iter().find(|k| k.fingerprint == fingerprint)
+        self.untrusted_keys
+            .iter()
+            .find(|k| k.fingerprint == fingerprint)
     }
-    
+
     /// Record a new untrusted key or update existing
     pub fn record_untrusted_key(
         &mut self,
@@ -229,7 +237,11 @@ impl AppState {
         payload: Option<ClientPayload>,
     ) {
         let now = Utc::now();
-        if let Some(existing) = self.untrusted_keys.iter_mut().find(|k| k.fingerprint == fingerprint) {
+        if let Some(existing) = self
+            .untrusted_keys
+            .iter_mut()
+            .find(|k| k.fingerprint == fingerprint)
+        {
             existing.last_seen = now;
             existing.attempt_count += 1;
             existing.ssh_username = ssh_username;
@@ -250,7 +262,7 @@ impl AppState {
             });
         }
     }
-    
+
     /// Trust a key by fingerprint - move from untrusted to trusted
     pub fn trust_key(
         &mut self,
@@ -258,13 +270,14 @@ impl AppState {
         username: String,
         device_name: String,
     ) -> anyhow::Result<()> {
-        let untrusted = self.untrusted_keys
+        let untrusted = self
+            .untrusted_keys
             .iter()
             .position(|k| k.fingerprint == fingerprint)
             .ok_or_else(|| anyhow::anyhow!("Key not found: {}", fingerprint))?;
-        
+
         let key = self.untrusted_keys.remove(untrusted);
-        
+
         self.trusted_keys.push(TrustedKey {
             id: Uuid::new_v4(),
             fingerprint: key.fingerprint,
@@ -276,34 +289,36 @@ impl AppState {
             last_used: None,
             use_count: 0,
         });
-        
+
         info!("Key trusted: {} ({})", key.ssh_username, key.id);
         Ok(())
     }
-    
+
     /// Revoke trust for a key by fingerprint
     pub fn revoke_key(&mut self, fingerprint: &str) -> anyhow::Result<()> {
-        let pos = self.trusted_keys
+        let pos = self
+            .trusted_keys
             .iter()
             .position(|k| k.fingerprint == fingerprint)
             .ok_or_else(|| anyhow::anyhow!("Trusted key not found: {}", fingerprint))?;
-        
+
         let key = self.trusted_keys.remove(pos);
         info!("Key revoked: {} ({})", key.username, key.fingerprint);
         Ok(())
     }
-    
+
     /// Delete an untrusted key
     pub fn delete_untrusted_key(&mut self, fingerprint: &str) -> anyhow::Result<()> {
-        let pos = self.untrusted_keys
+        let pos = self
+            .untrusted_keys
             .iter()
             .position(|k| k.fingerprint == fingerprint)
             .ok_or_else(|| anyhow::anyhow!("Untrusted key not found: {}", fingerprint))?;
-        
+
         self.untrusted_keys.remove(pos);
         Ok(())
     }
-    
+
     /// Add a connection log entry
     pub fn log_connection(&mut self, entry: ConnectionLogEntry) {
         info!(
@@ -311,13 +326,14 @@ impl AppState {
             entry.ssh_username, entry.client_ip, entry.fingerprint, entry.result
         );
         self.connection_log.push(entry);
-        
+
         // Keep last 10000 log entries
         if self.connection_log.len() > 10000 {
-            self.connection_log.drain(..self.connection_log.len() - 10000);
+            self.connection_log
+                .drain(..self.connection_log.len() - 10000);
         }
     }
-    
+
     /// Remove untrusted keys older than the retention period
     pub fn cleanup_expired_keys(&mut self, retention_days: u64) {
         let cutoff = Utc::now() - chrono::Duration::days(retention_days as i64);
@@ -328,17 +344,17 @@ impl AppState {
             info!("Cleaned up {} expired untrusted keys", removed);
         }
     }
-    
+
     /// Clean up expired geofence overrides
     pub fn cleanup_geofence_overrides(&mut self, timeout_sec: u64) {
         let cutoff = Utc::now() - chrono::Duration::seconds(timeout_sec as i64);
         self.geofence_overrides.retain(|_, ts| *ts > cutoff);
     }
-    
+
     /// Check and handle geofence override
     pub fn check_geofence_override(&mut self, fingerprint: &str, timeout_sec: u64) -> bool {
         self.cleanup_geofence_overrides(timeout_sec);
-        
+
         if let Some(first_attempt) = self.geofence_overrides.get(fingerprint) {
             let elapsed = Utc::now().signed_duration_since(*first_attempt);
             if elapsed.num_seconds() < timeout_sec as i64 {
@@ -347,9 +363,10 @@ impl AppState {
                 return true;
             }
         }
-        
+
         // First attempt or expired - record it
-        self.geofence_overrides.insert(fingerprint.to_string(), Utc::now());
+        self.geofence_overrides
+            .insert(fingerprint.to_string(), Utc::now());
         false
     }
 }

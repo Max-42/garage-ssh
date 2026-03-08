@@ -2,7 +2,7 @@
 pub fn sanitize_string(input: &str) -> String {
     // Use ammonia to strip all HTML tags and dangerous content
     let cleaned = ammonia::clean(input);
-    
+
     // Additional: limit length to prevent storage abuse
     let max_len = 1024;
     if cleaned.len() > max_len {
@@ -41,10 +41,7 @@ pub fn sanitize_json_value(value: &serde_json::Value) -> serde_json::Value {
         }
         serde_json::Value::Array(arr) => {
             // Limit array size
-            let sanitized: Vec<_> = arr.iter()
-                .take(100)
-                .map(sanitize_json_value)
-                .collect();
+            let sanitized: Vec<_> = arr.iter().take(100).map(sanitize_json_value).collect();
             serde_json::Value::Array(sanitized)
         }
         // Numbers, booleans, null are safe

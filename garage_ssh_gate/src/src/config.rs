@@ -28,11 +28,11 @@ impl AppConfig {
             .map_err(|e| anyhow::anyhow!("Failed to read config file {}: {}", path, e))?;
         let config: AppConfig = serde_json::from_str(&content)
             .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
-        
+
         info!("Configuration loaded from {}", path);
         Ok(config)
     }
-    
+
     /// Reload configuration (for live updates from HA UI)
     #[allow(dead_code)]
     pub fn reload(&mut self, path: &str) -> anyhow::Result<()> {

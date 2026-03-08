@@ -7,7 +7,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use tracing::{info, error};
+use tracing::{error, info};
 
 use crate::config::AppConfig;
 use crate::state::AppState;
@@ -30,7 +30,7 @@ pub async fn run(
         app_state: state,
         app_config: config,
     };
-    
+
     let app = Router::new()
         .route("/", get(index_page))
         .route("/api/state", get(get_state))
@@ -45,13 +45,13 @@ pub async fn run(
         .route("/api/logs", get(get_logs))
         .route("/api/config", get(get_config))
         .with_state(web_state);
-    
+
     let addr = "0.0.0.0:8099";
     info!("Web UI (ingress) listening on {}", addr);
-    
+
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }
 
@@ -126,50 +126,58 @@ struct ApiResponse {
 async fn get_state(State(web): State<WebState>) -> impl IntoResponse {
     let state = web.app_state.read().await;
     let tofu_active = state.tofu.is_active();
-    
+
     let response = serde_json::json!({
         "trusted_keys_count": state.trusted_keys.len(),
         "untrusted_keys_count": state.untrusted_keys.len(),
         "log_entries_count": state.connection_log.len(),
         "tofu_active": tofu_active,
     });
-    
+
     Json(response)
 }
 
 async fn get_trusted_keys(State(web): State<WebState>) -> impl IntoResponse {
     let state = web.app_state.read().await;
-    let keys: Vec<TrustedKeyResponse> = state.trusted_keys.iter().map(|k| TrustedKeyResponse {
-        id: k.id.to_string(),
-        fingerprint: k.fingerprint.clone(),
-        key_type: k.key_type.clone(),
-        username: k.username.clone(),
-        device_name: k.device_name.clone(),
-        trusted_at: k.trusted_at.to_rfc3339(),
-        last_used: k.last_used.map(|t| t.to_rfc3339()),
-        use_count: k.use_count,
-    }).collect();
-    
+    let keys: Vec<TrustedKeyResponse> = state
+        .trusted_keys
+        .iter()
+        .map(|k| TrustedKeyResponse {
+            id: k.id.to_string(),
+            fingerprint: k.fingerprint.clone(),
+            key_type: k.key_type.clone(),
+            username: k.username.clone(),
+            device_name: k.device_name.clone(),
+            trusted_at: k.trusted_at.to_rfc3339(),
+            last_used: k.last_used.map(|t| t.to_rfc3339()),
+            use_count: k.use_count,
+        })
+        .collect();
+
     Json(keys)
 }
 
 async fn get_untrusted_keys(State(web): State<WebState>) -> impl IntoResponse {
     let state = web.app_state.read().await;
-    let keys: Vec<UntrustedKeyResponse> = state.untrusted_keys.iter().map(|k| UntrustedKeyResponse {
-        id: k.id.to_string(),
-        fingerprint: k.fingerprint.clone(),
-        key_type: k.key_type.clone(),
-        ssh_username: k.ssh_username.clone(),
-        first_seen: k.first_seen.to_rfc3339(),
-        last_seen: k.last_seen.to_rfc3339(),
-        attempt_count: k.attempt_count,
-        device_info: k.last_payload.as_ref().map(|p| DeviceInfoResponse {
-            device_name: p.device_name.clone(),
-            device_model: p.device_model.clone(),
-            device_os: p.device_os.clone(),
-        }),
-    }).collect();
-    
+    let keys: Vec<UntrustedKeyResponse> = state
+        .untrusted_keys
+        .iter()
+        .map(|k| UntrustedKeyResponse {
+            id: k.id.to_string(),
+            fingerprint: k.fingerprint.clone(),
+            key_type: k.key_type.clone(),
+            ssh_username: k.ssh_username.clone(),
+            first_seen: k.first_seen.to_rfc3339(),
+            last_seen: k.last_seen.to_rfc3339(),
+            attempt_count: k.attempt_count,
+            device_info: k.last_payload.as_ref().map(|p| DeviceInfoResponse {
+                device_name: p.device_name.clone(),
+                device_model: p.device_model.clone(),
+                device_os: p.device_os.clone(),
+            }),
+        })
+        .collect();
+
     Json(keys)
 }
 
@@ -179,28 +187,35 @@ async fn trust_key(
 ) -> impl IntoResponse {
     let username = crate::sanitize::sanitize_short_string(&req.username);
     let device_name = crate::sanitize::sanitize_short_string(&req.device_name);
-    
+
     let mut state = web.app_state.write().await;
     match state.trust_key(&req.fingerprint, username, device_name) {
         Ok(()) => {
             if let Err(e) = state.save(STATE_PATH) {
                 error!("Failed to save state: {}", e);
-                return (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse {
-                    success: false,
-                    message: format!("Failed to save: {}", e),
-                }));
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiResponse {
+                        success: false,
+                        message: format!("Failed to save: {}", e),
+                    }),
+                );
             }
-            (StatusCode::OK, Json(ApiResponse {
-                success: true,
-                message: "Key trusted successfully".to_string(),
-            }))
+            (
+                StatusCode::OK,
+                Json(ApiResponse {
+                    success: true,
+                    message: "Key trusted successfully".to_string(),
+                }),
+            )
         }
-        Err(e) => {
-            (StatusCode::NOT_FOUND, Json(ApiResponse {
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(ApiResponse {
                 success: false,
                 message: format!("Error: {}", e),
-            }))
-        }
+            }),
+        ),
     }
 }
 
@@ -213,22 +228,29 @@ async fn revoke_key(
         Ok(()) => {
             if let Err(e) = state.save(STATE_PATH) {
                 error!("Failed to save state: {}", e);
-                return (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse {
-                    success: false,
-                    message: format!("Failed to save: {}", e),
-                }));
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiResponse {
+                        success: false,
+                        message: format!("Failed to save: {}", e),
+                    }),
+                );
             }
-            (StatusCode::OK, Json(ApiResponse {
-                success: true,
-                message: "Key revoked successfully".to_string(),
-            }))
+            (
+                StatusCode::OK,
+                Json(ApiResponse {
+                    success: true,
+                    message: "Key revoked successfully".to_string(),
+                }),
+            )
         }
-        Err(e) => {
-            (StatusCode::NOT_FOUND, Json(ApiResponse {
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(ApiResponse {
                 success: false,
                 message: format!("Error: {}", e),
-            }))
-        }
+            }),
+        ),
     }
 }
 
@@ -241,22 +263,29 @@ async fn delete_untrusted_key(
         Ok(()) => {
             if let Err(e) = state.save(STATE_PATH) {
                 error!("Failed to save state: {}", e);
-                return (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse {
-                    success: false,
-                    message: format!("Failed to save: {}", e),
-                }));
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiResponse {
+                        success: false,
+                        message: format!("Failed to save: {}", e),
+                    }),
+                );
             }
-            (StatusCode::OK, Json(ApiResponse {
-                success: true,
-                message: "Untrusted key deleted".to_string(),
-            }))
+            (
+                StatusCode::OK,
+                Json(ApiResponse {
+                    success: true,
+                    message: "Untrusted key deleted".to_string(),
+                }),
+            )
         }
-        Err(e) => {
-            (StatusCode::NOT_FOUND, Json(ApiResponse {
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(ApiResponse {
                 success: false,
                 message: format!("Error: {}", e),
-            }))
-        }
+            }),
+        ),
     }
 }
 
@@ -265,14 +294,14 @@ async fn activate_tofu(State(web): State<WebState>) -> impl IntoResponse {
         let config = web.app_config.read().await;
         config.tofu_timeout_sec
     };
-    
+
     let mut state = web.app_state.write().await;
     state.tofu.activate(timeout);
-    
+
     if let Err(e) = state.save(STATE_PATH) {
         error!("Failed to save state: {}", e);
     }
-    
+
     Json(ApiResponse {
         success: true,
         message: format!("TOFU mode activated for {} seconds", timeout),
@@ -282,11 +311,11 @@ async fn activate_tofu(State(web): State<WebState>) -> impl IntoResponse {
 async fn deactivate_tofu(State(web): State<WebState>) -> impl IntoResponse {
     let mut state = web.app_state.write().await;
     state.tofu.deactivate();
-    
+
     if let Err(e) = state.save(STATE_PATH) {
         error!("Failed to save state: {}", e);
     }
-    
+
     Json(ApiResponse {
         success: true,
         message: "TOFU mode deactivated".to_string(),
@@ -304,7 +333,7 @@ async fn tofu_status(State(web): State<WebState>) -> impl IntoResponse {
     } else {
         None
     };
-    
+
     Json(TofuStatusResponse {
         active,
         remaining_seconds: remaining,
@@ -314,7 +343,8 @@ async fn tofu_status(State(web): State<WebState>) -> impl IntoResponse {
 async fn get_logs(State(web): State<WebState>) -> impl IntoResponse {
     let state = web.app_state.read().await;
     // Return last 200 log entries, most recent first
-    let logs: Vec<LogEntryResponse> = state.connection_log
+    let logs: Vec<LogEntryResponse> = state
+        .connection_log
         .iter()
         .rev()
         .take(200)
@@ -326,7 +356,7 @@ async fn get_logs(State(web): State<WebState>) -> impl IntoResponse {
             client_ip: e.client_ip.clone(),
         })
         .collect();
-    
+
     Json(logs)
 }
 

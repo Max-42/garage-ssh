@@ -5,11 +5,11 @@ use async_trait::async_trait;
 use chrono::Utc;
 use russh::server::{Auth, Handler, Msg, Server as RusshServer, Session};
 use russh::{Channel, ChannelId, CryptoVec, MethodSet};
-use russh_keys::{PrivateKey, PublicKey};
-use russh_keys::ssh_key::rand_core::OsRng;
 use russh_keys::ssh_key::Algorithm;
+use russh_keys::ssh_key::rand_core::OsRng;
+use russh_keys::{PrivateKey, PublicKey};
 use tokio::sync::RwLock;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 use crate::config::AppConfig;
 use crate::geo;
@@ -74,7 +74,8 @@ fn save_host_key_to_config(
 
 /// Compute SHA-256 fingerprint of a public key
 fn compute_fingerprint(key: &PublicKey) -> String {
-    key.fingerprint(russh_keys::ssh_key::HashAlg::Sha256).to_string()
+    key.fingerprint(russh_keys::ssh_key::HashAlg::Sha256)
+        .to_string()
 }
 
 /// Get human-readable key type
@@ -85,7 +86,8 @@ fn key_type_string(key: &PublicKey) -> String {
 /// Encode public key to authorized_keys format string
 fn encode_public_key(key: &PublicKey) -> String {
     // to_openssh() produces "<type> <base64>" format
-    key.to_openssh().unwrap_or_else(|_| format!("{} <encode-error>", key_type_string(key)))
+    key.to_openssh()
+        .unwrap_or_else(|_| format!("{} <encode-error>", key_type_string(key)))
 }
 
 struct GarageSSHServer {
@@ -95,13 +97,13 @@ struct GarageSSHServer {
 
 impl RusshServer for GarageSSHServer {
     type Handler = GarageSSHHandler;
-    
+
     fn new_client(&mut self, peer_addr: Option<SocketAddr>) -> Self::Handler {
         let addr = peer_addr
             .map(|a| a.to_string())
             .unwrap_or_else(|| "unknown".to_string());
         info!("New SSH connection from {}", addr);
-        
+
         GarageSSHHandler {
             state: self.state.clone(),
             config: self.config.clone(),
@@ -131,7 +133,7 @@ struct GarageSSHHandler {
 #[async_trait]
 impl Handler for GarageSSHHandler {
     type Error = anyhow::Error;
-    
+
     async fn auth_none(&mut self, user: &str) -> Result<Auth, Self::Error> {
         self.ssh_username = sanitize::sanitize_short_string(user);
         info!("Auth attempt (none) from user: {}", self.ssh_username);
@@ -140,16 +142,19 @@ impl Handler for GarageSSHHandler {
             proceed_with_methods: Some(MethodSet::PUBLICKEY),
         })
     }
-    
+
     async fn auth_password(&mut self, user: &str, _password: &str) -> Result<Auth, Self::Error> {
         self.ssh_username = sanitize::sanitize_short_string(user);
-        warn!("Password auth attempted by {} from {} - rejecting", self.ssh_username, self.client_ip);
+        warn!(
+            "Password auth attempted by {} from {} - rejecting",
+            self.ssh_username, self.client_ip
+        );
         // Never accept passwords
         Ok(Auth::Reject {
             proceed_with_methods: Some(MethodSet::PUBLICKEY),
         })
     }
-    
+
     async fn auth_publickey(
         &mut self,
         user: &str,
@@ -159,20 +164,20 @@ impl Handler for GarageSSHHandler {
         let fingerprint = compute_fingerprint(public_key);
         self.public_key_str = encode_public_key(public_key);
         self.key_type = key_type_string(public_key);
-        
+
         info!(
             "Public key auth from user='{}' fingerprint={} type={} ip={}",
             self.ssh_username, fingerprint, self.key_type, self.client_ip
         );
-        
+
         // Always accept the key for authentication purposes.
         // We handle authorization (trusted/untrusted) after the channel is opened
         // and we receive the stdin data.
         self.authenticated_fingerprint = Some(fingerprint);
-        
+
         Ok(Auth::Accept)
     }
-    
+
     async fn channel_open_session(
         &mut self,
         channel: Channel<Msg>,
@@ -182,7 +187,7 @@ impl Handler for GarageSSHHandler {
         info!("Channel opened for {}", self.ssh_username);
         Ok(true)
     }
-    
+
     async fn exec_request(
         &mut self,
         channel_id: ChannelId,
@@ -190,14 +195,18 @@ impl Handler for GarageSSHHandler {
         session: &mut Session,
     ) -> Result<(), Self::Error> {
         // Some clients may send data via exec
-        info!("Exec request from {}: {} bytes", self.ssh_username, data.len());
+        info!(
+            "Exec request from {}: {} bytes",
+            self.ssh_username,
+            data.len()
+        );
         self.stdin_data.extend_from_slice(data);
-        
+
         // Process the connection
         self.process_connection(channel_id, session).await?;
         Ok(())
     }
-    
+
     async fn data(
         &mut self,
         _channel_id: ChannelId,
@@ -210,7 +219,7 @@ impl Handler for GarageSSHHandler {
         }
         Ok(())
     }
-    
+
     async fn shell_request(
         &mut self,
         channel_id: ChannelId,
@@ -246,24 +255,25 @@ impl GarageSSHHandler {
         let fingerprint = match &self.authenticated_fingerprint {
             Some(fp) => fp.clone(),
             None => {
-                self.send_response(channel_id, session, "ERROR: No key authenticated\n").await;
+                self.send_response(channel_id, session, "ERROR: No key authenticated\n")
+                    .await;
                 return Ok(());
             }
         };
-        
+
         // Prevent double-processing
         let already_fingerprint = self.authenticated_fingerprint.take();
         if already_fingerprint.is_none() {
             return Ok(());
         }
-        
+
         let config = self.config.read().await;
         let mut state = self.state.write().await;
-        
+
         // Parse stdin JSON payload
         let stdin_str = String::from_utf8_lossy(&self.stdin_data).to_string();
         let payload = self.parse_client_payload(&stdin_str, &config);
-        
+
         // Always record the key (even if JSON is invalid) for Android support etc.
         state.record_untrusted_key(
             fingerprint.clone(),
@@ -272,13 +282,13 @@ impl GarageSSHHandler {
             self.ssh_username.clone(),
             payload.as_ref().ok().and_then(|p| p.clone()),
         );
-        
+
         // Check if payload parsing had errors
         let (parsed_payload, json_error) = match payload {
             Ok(p) => (p, None),
             Err(e) => (None, Some(e)),
         };
-        
+
         // Handle JSON validation errors
         if let Some(error_msg) = &json_error {
             let result = if error_msg.contains("version mismatch") {
@@ -289,7 +299,7 @@ impl GarageSSHHandler {
             } else {
                 ConnectionResult::InvalidJson(error_msg.clone())
             };
-            
+
             state.log_connection(ConnectionLogEntry {
                 timestamp: Utc::now(),
                 fingerprint: fingerprint.clone(),
@@ -298,24 +308,21 @@ impl GarageSSHHandler {
                 client_ip: self.client_ip.clone(),
                 payload: None,
             });
-            
+
             state.save(STATE_PATH)?;
-            self.send_response(
-                channel_id,
-                session,
-                &format!("FAIL: {}\n", error_msg),
-            ).await;
+            self.send_response(channel_id, session, &format!("FAIL: {}\n", error_msg))
+                .await;
             let _ = session.close(channel_id);
             return Ok(());
         }
-        
+
         // Check if key is trusted
         let is_trusted = state.find_trusted_key(&fingerprint).is_some();
-        
+
         // Check if TOFU mode is active
         let tofu_active = state.tofu.is_active();
         let tofu_activated_at = state.tofu.activated_at;
-        
+
         if !is_trusted && tofu_active {
             // TOFU: only auto-trust keys that are genuinely NEW connections,
             // NOT keys that were already pending/untrusted before TOFU was activated.
@@ -325,7 +332,7 @@ impl GarageSSHHandler {
                         .map(|tofu_at| k.first_seen < tofu_at)
                         .unwrap_or(true)
             });
-            
+
             if key_existed_before_tofu {
                 // This key was already pending before TOFU – do NOT auto-trust
                 info!(
@@ -340,7 +347,7 @@ impl GarageSSHHandler {
                     client_ip: self.client_ip.clone(),
                     payload: parsed_payload.clone(),
                 });
-                
+
                 state.save(STATE_PATH)?;
                 self.send_response(
                     channel_id,
@@ -350,19 +357,15 @@ impl GarageSSHHandler {
                 let _ = session.close(channel_id);
                 return Ok(());
             }
-            
+
             // Genuinely new key during TOFU window – auto-trust
             let device_name = parsed_payload
                 .as_ref()
                 .and_then(|p| p.device_name.clone())
                 .unwrap_or_else(|| "Unknown Device".to_string());
-            
-            state.trust_key(
-                &fingerprint,
-                self.ssh_username.clone(),
-                device_name,
-            )?;
-            
+
+            state.trust_key(&fingerprint, self.ssh_username.clone(), device_name)?;
+
             state.log_connection(ConnectionLogEntry {
                 timestamp: Utc::now(),
                 fingerprint: fingerprint.clone(),
@@ -371,7 +374,7 @@ impl GarageSSHHandler {
                 client_ip: self.client_ip.clone(),
                 payload: parsed_payload.clone(),
             });
-            
+
             info!("Key auto-trusted via TOFU: {}", fingerprint);
             // Now it's trusted, continue with geofence check below
         } else if !is_trusted && !tofu_active {
@@ -384,17 +387,18 @@ impl GarageSSHHandler {
                 client_ip: self.client_ip.clone(),
                 payload: parsed_payload.clone(),
             });
-            
+
             state.save(STATE_PATH)?;
             self.send_response(
                 channel_id,
                 session,
                 "FAIL: Key not trusted. Please ask the administrator to trust your key.\n",
-            ).await;
+            )
+            .await;
             let _ = session.close(channel_id);
             return Ok(());
         }
-        
+
         // Key is trusted (either previously or via TOFU) - check geofence
         // NOTE: Geofencing is a CLIENT-SIDE convenience feature only!
         // The position comes from the client and can be trivially spoofed.
@@ -410,14 +414,14 @@ impl GarageSSHHandler {
                         lon,
                         config.geofence_radius_km,
                     );
-                    
+
                     if !within {
                         // Check if this is a geofence override (second attempt)
                         let override_success = state.check_geofence_override(
                             &fingerprint,
                             config.geofence_override_timeout_sec,
                         );
-                        
+
                         if override_success {
                             info!(
                                 "Geofence override accepted for {} ({:.1}km away)",
@@ -441,7 +445,7 @@ impl GarageSSHHandler {
                                 client_ip: self.client_ip.clone(),
                                 payload: parsed_payload.clone(),
                             });
-                            
+
                             state.save(STATE_PATH)?;
                             self.send_response(
                                 channel_id,
@@ -461,13 +465,13 @@ impl GarageSSHHandler {
                 }
             }
         }
-        
+
         // Update trusted key usage
         if let Some(trusted) = state.find_trusted_key_mut(&fingerprint) {
             trusted.last_used = Some(Utc::now());
             trusted.use_count += 1;
         }
-        
+
         // Log success
         state.log_connection(ConnectionLogEntry {
             timestamp: Utc::now(),
@@ -477,17 +481,18 @@ impl GarageSSHHandler {
             client_ip: self.client_ip.clone(),
             payload: parsed_payload,
         });
-        
+
         state.save(STATE_PATH)?;
-        
+
         // Fire webhook
         let webhook_url = config.webhook_url.clone();
         drop(config);
         drop(state);
-        
+
         match webhook::fire_webhook(&webhook_url).await {
             Ok(()) => {
-                self.send_response(channel_id, session, "SUCCESS: Garage door opening!\n").await;
+                self.send_response(channel_id, session, "SUCCESS: Garage door opening!\n")
+                    .await;
             }
             Err(e) => {
                 error!("Webhook failed: {}", e);
@@ -495,14 +500,15 @@ impl GarageSSHHandler {
                     channel_id,
                     session,
                     &format!("FAIL: Webhook error: {}\n", e),
-                ).await;
+                )
+                .await;
             }
         }
-        
+
         let _ = session.close(channel_id);
         Ok(())
     }
-    
+
     fn parse_client_payload(
         &self,
         stdin_str: &str,
@@ -513,14 +519,14 @@ impl GarageSSHHandler {
             // No payload sent (e.g., Android client)
             return Ok(None);
         }
-        
+
         // Parse JSON
-        let json: serde_json::Value = serde_json::from_str(trimmed)
-            .map_err(|e| format!("Invalid JSON: {}", e))?;
-        
+        let json: serde_json::Value =
+            serde_json::from_str(trimmed).map_err(|e| format!("Invalid JSON: {}", e))?;
+
         // Sanitize the entire JSON tree
         let sanitized = sanitize::sanitize_json_value(&json);
-        
+
         // Check version
         if let Some(version) = sanitized.get("version").and_then(|v| v.as_str()) {
             if version != config.expected_json_version {
@@ -530,14 +536,14 @@ impl GarageSSHHandler {
                 ));
             }
         }
-        
+
         // Extract fields
         let time = sanitized
             .get("time")
             .and_then(|t| t.get("value"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        
+
         let device = sanitized.get("device");
         let device_model = device
             .and_then(|d| d.get("model"))
@@ -559,7 +565,7 @@ impl GarageSSHHandler {
             .and_then(|d| d.get("version"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        
+
         let position = sanitized.get("position");
         let latitude = position
             .and_then(|p| p.get("latitude"))
@@ -570,12 +576,12 @@ impl GarageSSHHandler {
         let altitude = position
             .and_then(|p| p.get("altitude"))
             .and_then(|v| v.as_f64());
-        
+
         let version = sanitized
             .get("version")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        
+
         Ok(Some(ClientPayload {
             time,
             device_model,
@@ -590,13 +596,8 @@ impl GarageSSHHandler {
             raw_sanitized: serde_json::to_string(&sanitized).unwrap_or_default(),
         }))
     }
-    
-    async fn send_response(
-        &self,
-        channel_id: ChannelId,
-        session: &mut Session,
-        msg: &str,
-    ) {
+
+    async fn send_response(&self, channel_id: ChannelId, session: &mut Session, msg: &str) {
         let _ = session.data(channel_id, CryptoVec::from(msg.as_bytes()));
     }
 }
@@ -611,24 +612,19 @@ pub async fn run(
         let cfg = config.read().await;
         cfg.ssh_port
     };
-    
+
     let russh_config = russh::server::Config {
         methods: MethodSet::PUBLICKEY,
         keys: vec![host_key],
         ..Default::default()
     };
-    
-    let mut server = GarageSSHServer {
-        state,
-        config,
-    };
-    
+
+    let mut server = GarageSSHServer { state, config };
+
     let addr = format!("0.0.0.0:{}", ssh_port);
     info!("SSH server listening on {}", addr);
-    
-    server
-        .run_on_address(Arc::new(russh_config), &addr)
-        .await?;
-    
+
+    server.run_on_address(Arc::new(russh_config), &addr).await?;
+
     Ok(())
 }
