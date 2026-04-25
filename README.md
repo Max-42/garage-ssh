@@ -16,18 +16,45 @@ SSH-basierte Garagentor-Steuerung für Home Assistant. Nutzt SSH Public-Key-Auth
 
 ## Installation
 
+### Voraussetzungen (Home Assistant)
+
+- Home Assistant OS oder Supervised mit Add-on Store
+- Unterstützte CPU-Architektur: `aarch64` (z. B. Raspberry Pi 4/5 64-bit) oder `amd64`
+- Netzwerkzugriff auf Home Assistant über Port `2242/tcp` für den SSH-Shortcut
+
 ### Als Home Assistant Add-on
 
-1. Gehe in Home Assistant zu **Settings → Add-ons → Add-on Store**
-2. Klicke oben rechts auf das **⋮ Menü** → **Repositories**
-3. Füge diese Repository-URL hinzu:
-   ```
-   https://github.com/Max-42/garage-ssh
-   ```
-4. Klicke auf **Check for updates**
-5. Finde **Garage SSH Gate** in der Liste und installiere es
-6. Konfiguriere das Add-on (siehe unten)
-7. Starte das Add-on
+1. Gehe in Home Assistant zu **Settings → Add-ons → Add-on Store**.
+1. Klicke oben rechts auf das **⋮ Menü** → **Repositories**.
+1. Füge diese Repository-URL hinzu: `https://github.com/Max-42/garage-ssh`.
+1. Klicke auf **Check for updates**.
+1. Finde **Garage SSH Gate** in der Liste und installiere es.
+1. Konfiguriere das Add-on (siehe unten).
+1. Starte das Add-on.
+
+### Schnellstart nach der Installation
+
+1. Öffne den Tab **Configuration** des Add-ons.
+1. Setze mindestens folgende Optionen:
+
+- `webhook_url` auf deinen Home-Assistant Webhook/Automation-Endpunkt
+- optional `home_latitude` und `home_longitude` für Geofencing
+
+1. Klicke **Save** und dann **Start**.
+1. Öffne **Logs** und prüfe, dass beide Dienste laufen.
+
+- SSH-Server auf `0.0.0.0:2242`
+- Web UI (Ingress) auf `0.0.0.0:8099`
+
+1. Öffne das Add-on via **Open Web UI**.
+1. Führe deinen Shortcut einmal aus und vertraue den neuen Key in der Web UI.
+
+### Update des Add-ons
+
+1. Gehe zu **Settings → Add-ons → Add-on Store**.
+1. Klicke auf **Check for updates**.
+1. Öffne **Garage SSH Gate** und klicke **Update**.
+1. Nach dem Update: Add-on neu starten und kurz die Logs prüfen.
 
 ### Konfiguration
 
