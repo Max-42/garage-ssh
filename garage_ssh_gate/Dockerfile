@@ -1,5 +1,5 @@
 ARG BUILD_FROM
-FROM rust:1.85-alpine AS builder
+FROM docker.io/rust:1.85-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache \
