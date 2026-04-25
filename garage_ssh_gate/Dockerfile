@@ -1,5 +1,7 @@
-ARG BUILD_FROM
-FROM docker.io/rust:1.85-alpine AS builder
+ARG BUILDER_FROM=docker.io/rust:1.85-alpine
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
+
+FROM ${BUILDER_FROM} AS builder
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -30,7 +32,8 @@ COPY src/web/ ./web/
 RUN cargo build --release
 
 # --- Runtime stage ---
-FROM $BUILD_FROM
+ARG BUILD_FROM
+FROM ${BUILD_FROM}
 
 # Install runtime dependencies (minimal)
 RUN apk add --no-cache \
