@@ -58,6 +58,7 @@ jobs:
       contents: read
       packages: write
     strategy:
+      fail-fast: false
       matrix:
         arch: [amd64, aarch64, armv7, i386]
     steps:
@@ -92,10 +93,26 @@ jobs:
         id: base
         run: |
           case "${{ matrix.arch }}" in
-            amd64)   echo "platform=linux/amd64" >> $GITHUB_OUTPUT; echo "base=ghcr.io/home-assistant/amd64-base:latest" >> $GITHUB_OUTPUT ;;
-            aarch64) echo "platform=linux/arm64" >> $GITHUB_OUTPUT; echo "base=ghcr.io/home-assistant/aarch64-base:latest" >> $GITHUB_OUTPUT ;;
-            armv7)   echo "platform=linux/arm/v7" >> $GITHUB_OUTPUT; echo "base=ghcr.io/home-assistant/armv7-base:latest" >> $GITHUB_OUTPUT ;;
-            i386)    echo "platform=linux/386" >> $GITHUB_OUTPUT; echo "base=ghcr.io/home-assistant/i386-base:latest" >> $GITHUB_OUTPUT ;;
+            amd64)
+              echo "platform=linux/amd64" >> $GITHUB_OUTPUT
+              echo "base=ghcr.io/home-assistant/amd64-base:latest" >> $GITHUB_OUTPUT
+              echo "builder=docker.io/rust:1.85-alpine" >> $GITHUB_OUTPUT
+              ;;
+            aarch64)
+              echo "platform=linux/arm64" >> $GITHUB_OUTPUT
+              echo "base=ghcr.io/home-assistant/aarch64-base:latest" >> $GITHUB_OUTPUT
+              echo "builder=docker.io/rust:1.85-alpine" >> $GITHUB_OUTPUT
+              ;;
+            armv7)
+              echo "platform=linux/arm/v7" >> $GITHUB_OUTPUT
+              echo "base=ghcr.io/home-assistant/armv7-base:latest" >> $GITHUB_OUTPUT
+              echo "builder=docker.io/rust:1.85-alpine" >> $GITHUB_OUTPUT
+              ;;
+            i386)
+              echo "platform=linux/386" >> $GITHUB_OUTPUT
+              echo "base=ghcr.io/home-assistant/i386-base:latest" >> $GITHUB_OUTPUT
+              echo "builder=docker.io/i386/rust:1.85-alpine" >> $GITHUB_OUTPUT
+              ;;
           esac
 
       - name: Build and push
@@ -110,6 +127,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/${{ matrix.arch }}-garage-ssh-gate:latest
           build-args: |
             BUILD_FROM=${{ steps.base.outputs.base }}
+            BUILDER_FROM=${{ steps.base.outputs.builder }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
