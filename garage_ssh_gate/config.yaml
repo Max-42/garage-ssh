@@ -5,6 +5,7 @@ description: >-
   Features TOFU key management, geofencing, and a web UI for key management.
 version: "1.0.0"
 slug: "garage_ssh_gate"
+image: "ghcr.io/max-42/garage-ssh/{arch}-garage-ssh-gate"
 init: false
 arch:
   - aarch64
