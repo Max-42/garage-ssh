@@ -9,8 +9,6 @@ init: false
 arch:
   - aarch64
   - amd64
-  - armv7
-  - i386
 url: "https://github.com/Max-42/garage-ssh"
 startup: services
 boot: auto

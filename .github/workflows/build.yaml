@@ -60,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, aarch64, armv7, i386]
+        arch: [amd64, aarch64]
     steps:
       - uses: actions/checkout@v4
 
@@ -102,16 +102,6 @@ jobs:
               echo "platform=linux/arm64" >> $GITHUB_OUTPUT
               echo "base=ghcr.io/home-assistant/aarch64-base:latest" >> $GITHUB_OUTPUT
               echo "builder=docker.io/rust:1.85-alpine" >> $GITHUB_OUTPUT
-              ;;
-            armv7)
-              echo "platform=linux/arm/v7" >> $GITHUB_OUTPUT
-              echo "base=ghcr.io/home-assistant/armv7-base:latest" >> $GITHUB_OUTPUT
-              echo "builder=docker.io/rust:1.85-alpine" >> $GITHUB_OUTPUT
-              ;;
-            i386)
-              echo "platform=linux/386" >> $GITHUB_OUTPUT
-              echo "base=ghcr.io/home-assistant/i386-base:latest" >> $GITHUB_OUTPUT
-              echo "builder=docker.io/i386/rust:1.85-alpine" >> $GITHUB_OUTPUT
               ;;
           esac
 

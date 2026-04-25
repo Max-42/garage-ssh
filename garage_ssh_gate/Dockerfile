@@ -60,6 +60,6 @@ EXPOSE 8099
 LABEL \
     io.hass.version="VERSION" \
     io.hass.type="addon" \
-    io.hass.arch="aarch64|amd64|armv7|i386"
+    io.hass.arch="aarch64|amd64"
 
 CMD [ "/run.sh" ]
