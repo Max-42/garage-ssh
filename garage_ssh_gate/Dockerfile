@@ -2,8 +2,7 @@ ARG BUILDER_FROM=docker.io/rust:1.85-alpine
 ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
 ARG VERSION=dev
 
-FROM --platform=$BUILDPLATFORM ${BUILDER_FROM} AS builder
-ARG TARGETARCH
+FROM --platform=$TARGETPLATFORM ${BUILDER_FROM} AS builder
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -17,15 +16,6 @@ RUN apk add --no-cache \
 # Create app directory
 WORKDIR /build
 
-# Select Rust target for the requested Docker architecture
-RUN case "${TARGETARCH}" in \
-            amd64) echo "x86_64-unknown-linux-musl" > /tmp/rust_target ;; \
-            arm64|aarch64) echo "aarch64-unknown-linux-musl" > /tmp/rust_target ;; \
-            *) echo "Unsupported TARGETARCH: ${TARGETARCH}" && exit 1 ;; \
-        esac
-
-RUN rustup target add "$(cat /tmp/rust_target)"
-
 # Copy manifests first for better layer caching
 COPY src/Cargo.toml ./Cargo.toml
 COPY src/Cargo.lock ./Cargo.lock
@@ -35,10 +25,9 @@ COPY src/src/ ./src/
 COPY src/web/ ./web/
 
 # Build release binary
-RUN RUST_TARGET="$(cat /tmp/rust_target)" && \
-    cargo build --release --locked --target "${RUST_TARGET}" && \
+RUN cargo build --release --locked && \
     mkdir -p /build/out && \
-    cp "/build/target/${RUST_TARGET}/release/garage-ssh-gate" /build/out/garage-ssh-gate
+    cp "/build/target/release/garage-ssh-gate" /build/out/garage-ssh-gate
 
 # --- Runtime stage ---
 ARG BUILD_FROM
