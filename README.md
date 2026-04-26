@@ -229,6 +229,58 @@ cargo build --release
 docker build -t garage-ssh-gate --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest garage_ssh_gate/
 ```
 
+## Publish-Checkliste
+
+Verwende diese Schritte, bevor du ein neues Add-on-Release veröffentlichst.
+
+1. **Tests lokal ausführen**
+
+```bash
+# Rust Checks
+nix develop --command cargo test  --manifest-path garage_ssh_gate/src/Cargo.toml
+nix develop --command cargo clippy --manifest-path garage_ssh_gate/src/Cargo.toml -- -D warnings
+
+# Container bauen + Smoke-Test
+nix develop .#docker -c build-container garage-ssh-gate:local
+nix develop .#docker -c test-container garage-ssh-gate:local
+
+# Voller E2E-Test (Ports 2242/8099, TOFU, SSH Keys, Webhook)
+nix develop .#docker -c bash tests/integration/e2e.sh --engine podman --image garage-ssh-gate:local
+```
+
+1. **Änderungen committen und pushen**
+
+```bash
+git add .
+git commit -m "fix: release-ready changes"
+git push
+```
+
+1. **Version-Tag erstellen (Produktiv-Release)**
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+1. **CI Ergebnis prüfen**
+
+- Workflow `Build and Publish` muss grün sein.
+- Multi-Arch Images werden veröffentlicht:
+  - `ghcr.io/max-42/garage-ssh/amd64-garage-ssh-gate:<version>`
+  - `ghcr.io/max-42/garage-ssh/aarch64-garage-ssh-gate:<version>`
+  - `ghcr.io/max-42/garage-ssh/garage-ssh-gate:<version>`
+  - `ghcr.io/max-42/garage-ssh/garage-ssh-gate:latest`
+
+1. **Home Assistant aktualisieren**
+
+- Add-on Store → Repository aktualisieren → Add-on updaten.
+- Danach Logs prüfen: SSH und Web UI starten ohne Fehler.
+
+### Automatische Monats-Releases
+
+Zusätzlich zu normalen Push/Tag-Builds läuft CI automatisch monatlich (1. Tag des Monats) und veröffentlicht ein neues Image (`-monthly.<YYYYMM>`), damit Abhängigkeiten aktuell bleiben.
+
 ## Lizenz
 
 MIT License

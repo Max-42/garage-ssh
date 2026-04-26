@@ -10,8 +10,8 @@ on:
     branches:
       - main
   schedule:
-    # Nightly rebuild at 03:00 UTC to update dependencies
-    - cron: '0 3 * * *'
+    # Monthly automated release build on the 1st at 03:00 UTC
+    - cron: '0 3 1 * *'
 
 env:
   REGISTRY: ghcr.io
@@ -68,7 +68,7 @@ jobs:
             VERSION="${GITHUB_REF#refs/tags/v}"
             IS_RELEASE="true"
           elif [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
-            VERSION="${BASE_VERSION}-nightly.$(date -u +%Y%m%d)"
+            VERSION="${BASE_VERSION}-monthly.$(date -u +%Y%m)"
             IS_RELEASE="false"
           else
             VERSION="${BASE_VERSION}-dev.${GITHUB_RUN_NUMBER}"
@@ -79,9 +79,33 @@ jobs:
           echo "is_release=${IS_RELEASE}" >> "$GITHUB_OUTPUT"
           echo "Computed version: ${VERSION}"
 
+  integration:
+    name: Integration E2E (SSH/TOFU/Webhook)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq openssh-client curl
+
+      - name: Build test image (amd64)
+        run: |
+          docker build \
+            --file garage_ssh_gate/Dockerfile \
+            --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest \
+            --build-arg VERSION=ci-test \
+            --tag garage-ssh-gate:ci-test \
+            garage_ssh_gate
+
+      - name: Run end-to-end integration tests
+        run: |
+          bash tests/integration/e2e.sh --engine docker --image garage-ssh-gate:ci-test
+
   build:
     name: Build Docker Image
-    needs: [lint, prepare]
+    needs: [lint, prepare, integration]
     runs-on: ubuntu-latest
     permissions:
       contents: read

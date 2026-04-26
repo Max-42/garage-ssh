@@ -120,6 +120,9 @@
             podman
             buildah
             skopeo
+            curl
+            jq
+            openssh
             buildScript
             testScript
           ];
@@ -132,6 +135,7 @@
             echo "Commands:"
             echo "  build-container [tag]   - Build the HA add-on container image"
             echo "  test-container  [tag]   - Smoke-test the built image"
+            echo "  bash tests/integration/e2e.sh --engine podman --image <tag>"
             echo ""
             echo "Example:"
             echo "  build-container garage-ssh-gate:local"
