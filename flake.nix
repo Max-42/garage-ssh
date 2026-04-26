@@ -87,6 +87,7 @@
             openssl.dev
             libiconv
             git
+            docker
           ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.darwin.apple_sdk.frameworks.Security
             pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
@@ -96,6 +97,7 @@
             echo "🦀 Garage SSH Gate - Dev Environment"
             echo "   Rust: $(rustc --version)"
             echo "   Cargo: $(cargo --version)"
+            echo "   Docker: $(docker --version)"
             echo ""
             echo "Commands:"
             echo "  cargo build                      - Build debug"
